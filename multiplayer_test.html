@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Get ’Em Multiplayer</title>
+        <style>
+            html, body {
+                margin: 0;
+                overflow: hidden;
+                height: 100%;
+                font-family: Arial, sans-serif;
+                background: skyblue;
+                color: black;
+            }
+            canvas { display: none; }
+            #startScreen {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                gap: 1rem;
+                background: skyblue;
+                text-align: center;
+            }
+            #startScreen input { width: 4rem; padding: 0.4rem; text-align: center; }
+            #startScreen button { padding: 0.6rem 1.6rem; font-size: 1rem; cursor: pointer; }
+            #lobbyScreen {
+                position: absolute;
+                inset: 0;
+                display: none;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                gap: 1rem;
+                background: skyblue;
+                text-align: center;
+            }
+            #lobbyScreen button { padding: 0.6rem 1.6rem; font-size: 1rem; cursor: pointer; }
+            #lobbyScreen input { width: 6rem; padding: 0.4rem; text-align: center; text-transform: uppercase; }
+            .hidden { display: none !important; }
+            .controls-info { font-size: 0.9rem; line-height: 1.4; max-width: 18rem; }
+            #gameOver {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                gap: 1rem;
+                background: rgba(0,0,0,0.6);
+                color: white;
+                font-size: 2rem;
+                text-align: center;
+                z-index: 10;
+            }
+            #gameOver button { padding: 0.6rem 1.6rem; font-size: 1rem; cursor: pointer; }
+
+            /* Big countdown overlay (3-2-1) */
+            #bigCountdown {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                pointer-events: none;
+                z-index: 9999;
+                font-weight: 700;
+                font-family: Arial, Helvetica, sans-serif;
+                text-align: center;
+            }
+            #bigCountdown .number {
+                font-size: 240px;
+                color: white;
+                text-shadow: 0 8px 18px rgba(0,0,0,0.6);
+            }
+
+            /* small responsive tweaks */
+            @media (max-width: 600px) {
+                #bigCountdown .number { font-size: 140px; }
+                #startScreen h1 { font-size: 2rem; }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="startScreen">
+            <h1>Get ’Em Multiplayer</h1>
+            <label>
+                Players (2-4):
+                <input id="playerCount" type="number" min="2" max="4" value="2">
+            </label>
+            <label>
+                Seconds:
+                <input id="timeLimit" type="number" min="5" max="300" value="60">
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input id="powerupsCheckbox" type="checkbox" checked> Powerups
+            </label>
+            <button id="quickMatchButton">Quick Match</button>
+            <button id="createButton">Host Game</button>
+            <button id="joinButton">Join Game</button>
+            <label style="display:flex;align-items:center;gap:8px;">
+                Room Code: <input id="gameCode" type="text" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;">
+            </label>
+            <div class="controls-info">
+                Controls: WAD (red), Arrow keys (blue)<br>
+                + IJL (green)<br>
+                + FTH (yellow)
+            </div>
+        </div>
+
+        <div id="lobbyScreen">
+            <h2>Room: <span id="gameId"></span></h2>
+            <div>Players: <span id="joinedCount">1/2</span></div>
+            <button id="startGameButton" style="display:none;">Start Game</button>
+            <div id="waitingMsg">Share the room code with friends!</div>
+        </div>
+
+        <div id="gameOver" style="display:none;">
+            <div id="gameOverText">Red Lost!</div>
+            <button id="restartButton">Restart</button>
+            <button id="menuButton">Menu</button>
+        </div>
+
+        <!-- big countdown overlay -->
+        <div id="bigCountdown" style="display:none;"><div class="number" id="bigCountdownNumber">3</div></div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <script>
+            const server_url = 'https://getemmultiplayer.pythonanywhere.com';
+            let game_id, my_player_index, is_host, max_players, time_offset = 0;
+            let poll_interval;
+            let my_controls, inputState = { left: false, right: false, jumpPressed: false };
+
+            // ---------- Player class ----------
+            class Player {
+                constructor({ color }) {
+                    this.color = color;
+                    this.width = 20;
+                    this.height = 20;
+                    this.canvasX = 0;
+                    this.canvasY = 300;
+                    this.isIt = false;
+                    this.effects = {
+                        speedUntil: 0,
+                        jumpUntil: 0,
+                        invulnerableUntil: 0,
+                        reverseUntil: 0,
+                        godUntil: 0
+                    };
+                }
+                isInvulnerable(serverNow) {
+                    return this.effects.invulnerableUntil > serverNow || this.effects.godUntil > serverNow;
+                }
+            }
+
+            // ---------- Canvas + DOM ----------
+            const canvas = document.getElementById("gameCanvas");
+            const ctx = canvas.getContext("2d");
+            const startScreen = document.getElementById("startScreen");
+            const quickMatchButton = document.getElementById("quickMatchButton");
+            const createButton = document.getElementById("createButton");
+            const joinButton = document.getElementById("joinButton");
+            const gameCodeInput = document.getElementById("gameCode");
+            const playerCountInput = document.getElementById("playerCount");
+            const timeLimitInput = document.getElementById("timeLimit");
+            const powerupsCheckbox = document.getElementById("powerupsCheckbox");
+            const lobbyScreen = document.getElementById("lobbyScreen");
+            const gameIdEl = document.getElementById("gameId");
+            const joinedCountEl = document.getElementById("joinedCount");
+            const startGameButton = document.getElementById("startGameButton");
+            const waitingMsg = document.getElementById("waitingMsg");
+            const gameOverEl = document.getElementById("gameOver");
+            const gameOverText = document.getElementById("gameOverText");
+            const restartButton = document.getElementById("restartButton");
+            const menuButton = document.getElementById("menuButton");
+            const bigCountdown = document.getElementById("bigCountdown");
+            const bigCountdownNumber = document.getElementById("bigCountdownNumber");
+
+            // ---------- constants ----------
+            const PLAYER_DEFS = [
+                { color: "red", controls: { left: "a", right: "d", jump: "w" } },
+                { color: "blue", controls: { left: "ArrowLeft", right: "ArrowRight", jump: "ArrowUp" } },
+                { color: "green", controls: { left: "j", right: "l", jump: "i" } },
+                { color: "yellow", controls: { left: "f", right: "h", jump: "t" } }
+            ];
+
+            // ---------- game state ----------
+            const game = {
+                players: [],
+                objects: [
+                    { x: -400, y: 250, width: 140, height: 20 },
+                    { x: -600, y: 150, width: 140, height: 20 },
+                    { x: -500, y: 50, width: 70, height: 20 },
+                    { x: 400, y: 250, width: 140, height: 20 },
+                    { x: 400, y: 100, width: 140, height: 20 },
+                    { x: 120, y: 200, width: 160, height: 20 },
+                    { x: 200, y: 0, width: 160, height: 20 },
+                    { x: 400, y: -100, width: 160, height: 20 },
+                    { x: 250, y: -200, width: 100, height: 20 },
+                    { x: -60, y: 75, width: 120, height: 20 },
+                    { x: -100, y: -50, width: 120, height: 20 },
+                    { x: -60, y: -175, width: 220, height: 20 },
+                    { x: -400, y: -175, width: 220, height: 20 },
+                    { x: -300, y: 50, width: 120, height: 20 },
+                ],
+                running: false,
+                remaining_sec: 0,
+                // powerups
+                powerups: [], // active powerup pickups on world
+                clones: [], // temporary dummy clones
+                max_players: 2
+            };
+
+            // ---------- powerup visuals as SVG data URLs (icons provided) ----------
+            function svgToImgSrc(svg) {
+                const encoded = encodeURIComponent(svg.replace(/\n/g,''));
+                return "data:image/svg+xml;charset=utf-8," + encoded;
+            }
+            const ICON_SVGS = {
+                speed: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M6.34315 17.6569C5.22433 16.538 4.4624 15.1126 4.15372 13.5607C3.84504 12.0089 4.00346 10.4003 4.60896 8.93853C5.21446 7.47672 6.23984 6.22729 7.55544 5.34824C8.87103 4.46919 10.4177 4 12 4C13.5823 4 15.129 4.46919 16.4446 5.34824C17.7602 6.22729 18.7855 7.47672 19.391 8.93853C19.9965 10.4003 20.155 12.0089 19.8463 13.5607C19.5376 15.1126 18.7757 16.538 17.6569 17.6569" stroke="#33363F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> <path d="M12 12L16 10" stroke="#33363F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>',
+                clone: '<svg viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns" fill="#000000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>duplicate</title> <desc>Created with Sketch Beta.</desc> <defs> </defs> <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage"> <g id="Icon-Set-Filled" sketch:type="MSLayerGroup" transform="translate(-206.000000, -933.000000)" fill="#000000"> <path d="M234,933 L218,933 C215.791,933 214,934.791 214,937 L214,953 C214,955.209 215.791,957 218,957 L234,957 C236.209,957 238,955.209 238,953 L238,937 C238,934.791 236.209,933 234,933 L234,933 Z M212,954 L212,941 L210,941 C207.791,941 206,942.791 206,945 L206,961 C206,963.209 207.791,965 210,965 L226,965 C228.209,965 230,963.209 230,961 L230,959 L217,959 C214.791,959 212,956.209 212,954 L212,954 Z" id="duplicate" sketch:type="MSShapeGroup"> </path> </g> </g> </g></svg>',
+                reverse: '<svg fill="#000000" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>reverse</title> <path d="M15.708 31.015l15.572-3.735-4.546-15.334-3.43 5.932-3.426-1.975 1.683-2.902-10.232-5.889 2.576-4.442-11.695 2.797 3.414 11.484 2.576-4.442 3.467 1.995-2.72 4.705 10.191 5.875-3.43 5.932z"></path> </g></svg>',
+                jump: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" fill="#000000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>spring</title> <g id="Layer_2" data-name="Layer 2"> <g id="invisible_box" data-name="invisible box"> <rect width="48" height="48" fill="none"></rect> </g> <g id="icons_Q2" data-name="icons Q2"> <g> <path d="M41,42h-.8a54.6,54.6,0,0,1-12.4,4H41a2,2,0,0,0,0-4Z"></path> <path d="M7,13a117.3,117.3,0,0,0,17.5-1.4c6.2-1,12.7-2.8,17.6-5.9a2.1,2.1,0,0,0,.6-2.8A2,2,0,0,0,41,2a2.3,2.3,0,0,0-1.1.3C32.2,7.2,17.8,9,7,9a2,2,0,0,0-1.8,1.2A1.9,1.9,0,0,0,5,11,2,2,0,0,0,7,13Z"></path> <path d="M7,24a118.2,118.2,0,0,0,17.5-1.4h0c6.2-1,12.7-2.8,17.5-5.9h.1a3.9,3.9,0,0,0,.8-1v-.2H43v-.5c0-.1,0-.2-.1-.2h0v-.2h0v-.2a2.7,2.7,0,0,0-1-.8H41l-2.2-.2L37,12.6l-5.6-.4a91.5,91.5,0,0,1-13.9,2.3.3.3,0,0,0,0,.5l10.1.9,3.1.2,2.6.2C25.5,19,15.2,20,7,20a2,2,0,0,0-1.8,1.2h0A1.9,1.9,0,0,0,5,22,2,2,0,0,0,7,24Z"></path> <path d="M7,35a118.2,118.2,0,0,0,17.5-1.4h0c6.2-1,12.6-2.8,17.4-5.8h0c.1,0,.1,0,.1-.1h.1c.1,0,.2,0,.2-.1l.4-.4a.8.8,0,0,1,.2-.4H43v-.5c0-.1,0-.2-.1-.2h0v-.2h-.1c0-.1-.1-.1-.1-.2h-.2l-.2-.2h-.2l-.4-.2h-.3a.1.1,0,0,0-.1-.1H41l-2.2-.2L37,23.6h0l-5.6-.4a91.5,91.5,0,0,1-13.9,2.3.3.3,0,0,0,0,.5l10.1.9,3.1.2,2.6.2C25.5,30,15.2,31,7,31a2,2,0,0,0-1.8,1.2h0A1.9,1.9,0,0,0,5,33,2,2,0,0,0,7,35Z"></path> <path d="M41.9,38.8h.2c.1,0,.2,0,.2-.1s.3-.3.4-.4h0c0-.1,0-.1.1-.2s0-.1.1-.2H43v-.5c0-.1,0-.2-.1-.2h0v-.2h-.1c0-.1-.1-.1-.1-.2h-.2l-.2-.2h-.2l-.4-.2h-.3a.1.1,0,0,0-.1-.1H41l-2.2-.2L37,34.6h0l-5.6-.4a91.5,91.5,0,0,1-13.9,2.3.3.3,0,0,0,0,.5l10.1.9,3.1.2,2.6.2C25.5,41,15.2,42,7,42a2,2,0,0,0,0,4c4.4,0,17.5-.3,28-4A36.4,36.4,0,0,0,41.9,38.8Z"></path> </g> </g> </g> </g></svg>',
+                shield: '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M4.35009 13.3929L8 16L11.6499 13.3929C13.7523 11.8912 15 9.46667 15 6.88306V3L8 0L1 3V6.88306C1 9.46667 2.24773 11.8912 4.35009 13.3929Z" fill="#000000"></path> </g></svg>',
+                god: '<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" fill="#000000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><path fill="#000000" d="M256 16c-40.2 0-73 32.79-73 73 0 32.2 21 59.6 50 69.3V496h46V158.3c29-9.7 50-37.1 50-69.3 0-40.21-32.8-73-73-73zm0 18c30.5 0 55 24.52 55 55 0 30.5-24.5 55-55 55s-55-24.5-55-55c0-3.55.3-7.02 1-10.38C207.2 90.01 218.7 98 232 98c18.1 0 33-14.88 33-33 0-13.27-8-24.79-19.4-30.02 3.4-.63 6.8-.98 10.4-.98zM29.51 65.88c4.35 23.5 9.23 45.72 14.87 66.82 46.3 25.2 114.92 54.7 170.62 69.5V192C149.6 159 75.7 106.7 29.51 65.88zm452.99 0C436.3 106.7 362.4 159 297 192v10.2c55.7-14.8 124.3-44.3 170.6-69.5 5.7-21.1 10.6-43.33 14.9-66.82zM28.58 144.6c6.32 15.5 12.81 30.2 19.55 44.1C94.15 206 159.6 224.2 215 232.4v-11.6c-62-15.6-137.33-48.3-186.42-76.2zm454.82 0C434.3 172.5 359 205.2 297 220.8v11.6c55.4-8.2 120.9-26.4 166.9-43.7 6.7-13.9 13.2-28.6 19.5-44.1zM247 161.4c3 .4 6 .6 9 .6s6-.2 9-.6V425h-18zm-213.63 41c9.56 16.5 19.21 31.9 29.08 46.4 43.15 8.5 102.75 15 152.55 14.6v-12.7c-61.3-8.6-132.95-29-181.63-48.3zm445.23 0C430 221.7 358.3 242.1 297 250.7v12.7c49.8.4 109.5-6.1 152.5-14.6 9.9-14.5 19.6-29.9 29.1-46.4zm-427 62.5c36.7 44.2 72.6 78.2 112.6 100.4 19.5 10.9 34.6 18.6 50.8 23.4V281.4c-54.5.7-118.2-6.7-163.4-16.5zm408.8 0c-45.2 9.8-108.9 17.2-163.4 16.5v107.3c16.2-4.8 31.3-12.5 50.8-23.4 40-22.2 75.9-56.2 112.6-100.4z"></path></g></svg>',
+                teleport: '<svg fill="#000000" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>player-teleport</title> <path d="M30.135 17.039c0-1.494-3.593-2.777-8.71-3.325-0.009-0.113-0.019-0.226-0.030-0.338-0.002-0.016-0.003-0.031-0.005-0.047-0.011-0.115-0.023-0.229-0.037-0.342-0.002-0.017-0.004-0.033-0.006-0.050-0.013-0.113-0.028-0.225-0.043-0.336-0.002-0.017-0.005-0.034-0.007-0.050-0.016-0.111-0.032-0.221-0.050-0.33-0.001-0.009-0.003-0.018-0.004-0.026l0 0.004c-0.037-0.227-0.079-0.45-0.127-0.668 5.279-0.528 9.017-1.833 9.017-3.357 0-1.724-4.786-3.167-11.177-3.523-0.070-1.785-1.053-3.258-2.362-3.687-0.252-0.082-0.515-0.126-0.787-0.126-0.109 0-0.221-0.014-0.327 0l0 0c-1.537 0.2-2.747 1.826-2.822 3.821-6.314 0.37-11.023 1.804-11.023 3.515-0 1.525 3.741 2.829 9.025 3.357-0.082 0.333-0.153 0.678-0.213 1.031l0-0.003c-0.002 0.010-0.003 0.020-0.005 0.030-0.019 0.115-0.038 0.23-0.055 0.346-0.002 0.016-0.005 0.033-0.007 0.049-0.017 0.115-0.032 0.23-0.047 0.346-0.002 0.018-0.004 0.036-0.007 0.053-0.014 0.112-0.027 0.223-0.039 0.336-5.087 0.551-8.653 1.83-8.653 3.318-0 1.705 4.68 3.135 10.963 3.511l0.12 1.615c-6.354 0.363-11.101 1.801-11.101 3.519 0 1.992 6.38 3.608 14.25 3.608s14.25-1.615 14.25-3.608c0-1.713-4.718-3.148-11.044-3.516l0.107-1.618c6.278-0.377 10.953-1.806 10.953-3.511zM26.054 16.565c0 1.121-2.824 2.081-6.77 2.439l0.075-1.142h2.172c0-0.792 0.003-1.656-0.022-2.535l0 0.001c-0-0.003-0-0.006-0-0.008-0.003-0.121-0.007-0.242-0.012-0.363-0-0.012-0.001-0.023-0.001-0.034-0.005-0.121-0.010-0.241-0.016-0.362-0.001-0.013-0.001-0.025-0.002-0.038-0.002-0.031-0.003-0.062-0.005-0.092 2.76 0.453 4.581 1.235 4.581 2.135zM26.054 7.701c0 0.988-2.194 1.851-5.416 2.287-0.519-1.2-1.338-2.059-2.633-2.26 0.511-0.641 0.862-1.5 0.94-2.461 4.122 0.323 7.108 1.282 7.108 2.435zM5.683 7.701c0-1.139 2.938-2.089 6.992-2.423 0.083 0.982 0.453 1.853 0.986 2.496-1.167 0.22-1.952 1.057-2.48 2.221-3.263-0.433-5.499-1.301-5.499-2.294zM5.683 16.565c0-0.893 1.807-1.67 4.541-2.125-0.003 0.033-0.005 0.065-0.008 0.098-0.002 0.020-0.003 0.039-0.004 0.059-0.008 0.115-0.016 0.23-0.024 0.345-0.001 0.021-0.002 0.042-0.004 0.063-0.007 0.113-0.013 0.226-0.019 0.339-0.001 0.024-0.002 0.049-0.003 0.073-0.005 0.108-0.010 0.216-0.014 0.324-0 0.010-0.001 0.019-0.001 0.029l0-0.004c-0.028 0.724-0.035 1.433-0.035 2.095h2.288l0.085 1.142c-3.956-0.357-6.803-1.318-6.803-2.439zM26.048 25.222c0 1.423-4.557 2.577-10.178 2.577s-10.178-1.154-10.178-2.577c0-1.149 2.971-2.122 7.074-2.455l0.242 3.245c1.537 0.541 4.496 0.482 5.815 0l0.213-3.24c4.071 0.337 7.012 1.306 7.012 2.45z"></path> </g></svg>'
+            };
+            const ICON_IMGS = {};
+            for (const k in ICON_SVGS) {
+                const img = new Image();
+                img.src = svgToImgSrc(ICON_SVGS[k]);
+                ICON_IMGS[k] = img;
+            }
+
+            // ---------- resize ----------
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                game.draw();
+            }
+
+            // ---------- draw ----------
+            game.draw = function() {
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                ctx.fillStyle = "skyblue";
+                ctx.fillRect(0,0,canvas.width,canvas.height);
+
+                // title
+                ctx.fillStyle = "black";
+                ctx.font = "100px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillText("Get ’Em", canvas.width/2, 20);
+
+                // draw platforms
+                ctx.fillStyle = "white";
+                for (const obj of game.objects) {
+                    const drawX = canvas.width/2 + obj.x;
+                    const drawY = canvas.height/2 + obj.y;
+                    ctx.fillRect(drawX, drawY, obj.width, obj.height);
+                }
+
+                // draw powerups
+                for (const pu of game.powerups) {
+                    const drawX = canvas.width/2 + pu.x;
+                    const drawY = canvas.height/2 + pu.y - 5; // <-- move 5px higher
+
+                    // smaller radius
+                    const radius = pu.radius * 0.7; // <-- 70% of original size
+
+                    // circle
+                    ctx.beginPath();
+                    ctx.fillStyle = (pu.type === "god") ? "gold" : "white";
+                    ctx.arc(drawX, drawY, radius, 0, Math.PI*2);
+                    ctx.fill();
+
+                    // icon (centered)
+                    const img = ICON_IMGS[pu.type];
+                    if (img && img.complete) {
+                        const size = radius * 1.4; // match icon size to new radius
+                        ctx.drawImage(img, drawX - size/2, drawY - size/2, size, size);
+                    }
+
+                    // small border
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = "rgba(0,0,0,0.15)";
+                    ctx.beginPath();
+                    ctx.arc(drawX, drawY, radius, 0, Math.PI*2);
+                    ctx.stroke();
+                }
+
+                // draw clones
+                for (const c of game.clones) {
+                    const dx = canvas.width/2 + c.x - c.width/2;
+                    const dy = canvas.height/2 + c.y - c.height/2;
+                    ctx.fillStyle = c.color;
+                    ctx.fillRect(dx, dy, c.width, c.height);
+                }
+
+                // draw players
+                const est_server_now = performance.now() + time_offset;
+                for (const player of game.players) {
+                    const drawX = canvas.width/2 + player.canvasX - player.width/2;
+                    const drawY = canvas.height/2 + player.canvasY - player.height/2;
+                    ctx.fillStyle = player.color;
+                    ctx.fillRect(drawX, drawY, player.width, player.height);
+
+                    // shield / ring if invulnerable
+                    if (player.isInvulnerable(est_server_now)) {
+                        ctx.beginPath();
+                        ctx.lineWidth = 4;
+                        ctx.strokeStyle = "white";
+                        ctx.arc(drawX + player.width/2, drawY + player.height/2, Math.max(player.width, player.height), 0, Math.PI*2);
+                        ctx.stroke();
+                    }
+
+                    // draw yellow dot above head if player is "it"
+                    if (player.isIt) {
+                        const dotX = drawX + player.width/2;
+                        const dotY = drawY - 8;
+                        ctx.beginPath();
+                        ctx.fillStyle = "yellow";
+                        ctx.arc(dotX, dotY, 5, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                }
+
+                // draw countdown top-right (round timer)
+                if (game.remaining_sec > 0) {
+                    const sec = game.remaining_sec;
+                    ctx.font = "28px Arial";
+                    ctx.textAlign = "right";
+                    ctx.textBaseline = "top";
+                    const text = sec + "s";
+                    const padding = 8;
+                    const metrics = ctx.measureText(text);
+                    const w = metrics.width + padding*2;
+                    const h = 36;
+                    const x = canvas.width - 20;
+                    const y = 20;
+                    ctx.fillStyle = "rgba(0,0,0,0.4)";
+                    ctx.fillRect(x - w, y, w, h);
+                    ctx.fillStyle = "white";
+                    ctx.fillText(text, x - padding, y + 4);
+                }
+            };
+
+            // ---------- update from state ----------
+            function updateFromState(state) {
+                game.players = state.players.map(p => {
+                    const player = new Player({ color: p.color });
+                    player.canvasX = p.x;
+                    player.canvasY = p.y;
+                    player.isIt = p.is_it;
+                    player.effects = p.effects;
+                    return player;
+                });
+                game.powerups = state.powerups;
+                game.clones = state.clones;
+                game.running = state.running;
+                game.remaining_sec = state.remaining_sec;
+                game.max_players = state.max_players;
+
+                const cd_rem = state.countdown_remaining_sec;
+                if (cd_rem > 0) {
+                    bigCountdownNumber.textContent = Math.ceil(cd_rem).toString();
+                    bigCountdown.style.display = 'flex';
+                } else {
+                    bigCountdown.style.display = 'none';
+                }
+
+                const is_lobby = !state.running && cd_rem === 0 && state.game_over_loser === null;
+                if (is_lobby) {
+                    joinedCountEl.textContent = `${state.players.length}/${state.max_players}`;
+                    startGameButton.style.display = (state.host_index === my_player_index && state.players.length === state.max_players) ? 'block' : 'none';
+                    canvas.style.display = 'none';
+                    lobbyScreen.style.display = 'flex';
+                } else {
+                    lobbyScreen.style.display = 'none';
+                    canvas.style.display = 'block';
+                    resizeCanvas();
+                }
+
+                if (state.game_over_loser) {
+                    const loserName = state.game_over_loser.charAt(0).toUpperCase() + state.game_over_loser.slice(1);
+                    gameOverText.textContent = loserName + " Lost!";
+                    gameOverEl.style.display = 'flex';
+                } else {
+                    gameOverEl.style.display = 'none';
+                }
+            }
+
+            // ---------- polling ----------
+            function startPolling() {
+                poll_interval = setInterval(async () => {
+                    try {
+                        const inp = getCurrentInput();
+                        await fetch(`${server_url}/input/${game_id}/${my_player_index}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(inp)
+                        });
+
+                        const res = await fetch(`${server_url}/state/${game_id}/${my_player_index}`);
+                        if (!res.ok) throw new Error('Failed to fetch state');
+                        const state = await res.json();
+                        time_offset = state.server_time - performance.now();
+                        updateFromState(state);
+                    } catch (e) {
+                        console.error('Polling error:', e);
+                    }
+                }, 100);
+            }
+
+            function getCurrentInput() {
+                const inp = {
+                    left: inputState.left,
+                    right: inputState.right,
+                    jump: inputState.jumpPressed
+                };
+                inputState.jumpPressed = false;
+                return inp;
+            }
+
+            function setupControls(controls) {
+                my_controls = controls;
+                // Clear previous listeners if any
+                window.removeEventListener('keydown', handleKeydown);
+                window.removeEventListener('keyup', handleKeyup);
+                window.addEventListener('keydown', handleKeydown);
+                window.addEventListener('keyup', handleKeyup);
+            }
+
+            function handleKeydown(e) {
+                if (e.key === my_controls.left) inputState.left = true;
+                if (e.key === my_controls.right) inputState.right = true;
+                if (e.key === my_controls.jump) inputState.jumpPressed = true;
+                e.preventDefault();
+            }
+
+            function handleKeyup(e) {
+                if (e.key === my_controls.left) inputState.left = false;
+                if (e.key === my_controls.right) inputState.right = false;
+                e.preventDefault();
+            }
+
+            // ---------- quick match ----------
+            async function quickMatch() {
+                const count = parseInt(playerCountInput.value, 10);
+                const seconds = parseInt(timeLimitInput.value, 10) || 60;
+                const pu = powerupsCheckbox.checked;
+                if (!Number.isInteger(count) || count < 2 || count > 4) {
+                    alert("Please enter a number between 2 and 4.");
+                    return;
+                }
+                if (!Number.isInteger(seconds) || seconds < 5) {
+                    alert("Please enter a time of at least 5 seconds.");
+                    return;
+                }
+                try {
+                    const res = await fetch(`${server_url}/quick_match`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ num_players: count, time_limit: seconds, powerups: pu })
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.error || 'Failed to quick match');
+                    }
+                    const data = await res.json();
+                    game_id = data.game_id;
+                    my_player_index = data.player_index;
+                    is_host = data.is_host;
+                    max_players = data.max_players;
+                    gameIdEl.textContent = game_id;
+                    waitingMsg.textContent = is_host ? 'You are the host. Wait for players.' : 'Matched! Waiting for host to start...';
+                    lobbyScreen.style.display = 'flex';
+                    startScreen.style.display = 'none';
+                    setupControls(PLAYER_DEFS[my_player_index].controls);
+                    startPolling();
+                } catch (e) {
+                    alert('Failed to quick match: ' + e.message);
+                }
+            }
+
+            // ---------- create game ----------
+            async function createGame() {
+                const count = parseInt(playerCountInput.value, 10);
+                const seconds = parseInt(timeLimitInput.value, 10) || 60;
+                const pu = powerupsCheckbox.checked;
+                if (!Number.isInteger(count) || count < 2 || count > 4) {
+                    alert("Please enter a number between 2 and 4.");
+                    return;
+                }
+                if (!Number.isInteger(seconds) || seconds < 5) {
+                    alert("Please enter a time of at least 5 seconds.");
+                    return;
+                }
+                try {
+                    const res = await fetch(`${server_url}/create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ num_players: count, time_limit: seconds, powerups: pu })
+                    });
+                    if (!res.ok) throw new Error('Failed to create');
+                    const data = await res.json();
+                    game_id = data.game_id;
+                    my_player_index = data.player_index;
+                    is_host = data.is_host;
+                    max_players = data.max_players;
+                    gameIdEl.textContent = game_id;
+                    waitingMsg.textContent = 'Waiting for players to join...';
+                    lobbyScreen.style.display = 'flex';
+                    startScreen.style.display = 'none';
+                    setupControls(PLAYER_DEFS[0].controls);
+                    startPolling();
+                } catch (e) {
+                    alert('Failed to create game: ' + e.message);
+                }
+            }
+
+            // ---------- join game ----------
+            async function joinGame() {
+                const gid = gameCodeInput.value.trim().toUpperCase();
+                if (!gid || gid.length !== 6) {
+                    alert('Enter a valid 6-character room code.');
+                    return;
+                }
+                try {
+                    const res = await fetch(`${server_url}/join/${gid}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: '{}'
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.error || 'Failed to join');
+                    }
+                    const data = await res.json();
+                    game_id = gid;
+                    my_player_index = data.player_index;
+                    is_host = data.is_host;
+                    max_players = data.max_players;
+                    gameIdEl.textContent = gid;
+                    waitingMsg.textContent = is_host ? 'You are the host. Wait for players.' : 'Waiting for host to start...';
+                    lobbyScreen.style.display = 'flex';
+                    startScreen.style.display = 'none';
+                    setupControls(PLAYER_DEFS[my_player_index].controls);
+                    startPolling();
+                } catch (e) {
+                    alert('Failed to join: ' + e.message);
+                }
+            }
+
+            // ---------- start game ----------
+            startGameButton.addEventListener('click', async () => {
+                try {
+                    const res = await fetch(`${server_url}/start/${game_id}/${my_player_index}`, { method: 'POST' });
+                    if (!res.ok) throw new Error('Failed to start');
+                    startGameButton.style.display = 'none';
+                    waitingMsg.textContent = 'Starting in 3...';
+                } catch (e) {
+                    alert('Failed to start game: ' + e.message);
+                }
+            });
+
+            // ---------- restart ----------
+            restartButton.addEventListener('click', async () => {
+                try {
+                    const res = await fetch(`${server_url}/restart/${game_id}/${my_player_index}`, { method: 'POST' });
+                    if (res.ok) {
+                        gameOverEl.style.display = 'none';
+                    }
+                } catch (e) {
+                    console.error('Restart failed:', e);
+                }
+            });
+
+            // ---------- menu ----------
+            menuButton.addEventListener('click', resetToStart);
+
+            function resetToStart() {
+                if (poll_interval) {
+                    clearInterval(poll_interval);
+                    poll_interval = null;
+                }
+                game.players = [];
+                game.powerups = [];
+                game.clones = [];
+                gameOverEl.style.display = 'none';
+                bigCountdown.style.display = 'none';
+                lobbyScreen.style.display = 'none';
+                canvas.style.display = 'none';
+                startScreen.style.display = 'flex';
+                gameCodeInput.value = '';
+                inputState = { left: false, right: false, jumpPressed: false };
+                my_controls = null;
+                window.removeEventListener('keydown', handleKeydown);
+                window.removeEventListener('keyup', handleKeyup);
+            }
+
+            // ---------- events ----------
+            quickMatchButton.addEventListener("click", quickMatch);
+            createButton.addEventListener("click", createGame);
+            joinButton.addEventListener("click", joinGame);
+            window.addEventListener("resize", resizeCanvas);
+
+            resizeCanvas();
+            game.tick = function tick() {
+                requestAnimationFrame(game.tick);
+                game.draw();
+            };
+            game.tick();
+        </script>
+    </body>
+</html>
