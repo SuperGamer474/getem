@@ -128,7 +128,7 @@
         <canvas id="gameCanvas"></canvas>
 
         <script>
-            const server_url = 'https://getemmultiplayer.pythonanywhere.com';
+            const server_url = 'http://localhost:5000';
             let game_id, my_player_index, is_host, max_players, time_offset = 0;
             let poll_interval;
             let my_controls, inputState = { left: false, right: false, jumpPressed: false };
@@ -371,10 +371,12 @@
                     bigCountdown.style.display = 'none';
                 }
 
+                // FIX: Properly handle lobby state - only show lobby when game is not running AND no countdown AND not game over
                 const is_lobby = !state.running && cd_rem === 0 && state.game_over_loser === null;
                 if (is_lobby) {
                     joinedCountEl.textContent = `${state.players.length}/${state.max_players}`;
-                    startGameButton.style.display = (state.host_index === my_player_index && state.players.length === state.max_players) ? 'block' : 'none';
+                    startGameButton.style.display = (state.host_index === my_player_index && state.players.length >= 2) ? 'block' : 'none';
+                    waitingMsg.textContent = state.host_index === my_player_index ? 'Share the room code with friends!' : 'Waiting for host to start...';
                     canvas.style.display = 'none';
                     lobbyScreen.style.display = 'flex';
                 } else {
@@ -478,21 +480,7 @@
                     waitingMsg.textContent = is_host ? 'You are the host. Wait for players.' : 'Matched! Waiting for host to start...';
                     lobbyScreen.style.display = 'flex';
                     startScreen.style.display = 'none';
-                    // use the player index assigned by server
                     setupControls(PLAYER_DEFS[my_player_index].controls);
-
-                    // immediate state sync (helps avoid flicker/back-to-lobby issues if server already began countdown)
-                    try {
-                        const sres = await fetch(`${server_url}/state/${game_id}/${my_player_index}`);
-                        if (sres.ok) {
-                            const state = await sres.json();
-                            time_offset = state.server_time - performance.now();
-                            updateFromState(state);
-                        }
-                    } catch (e) {
-                        console.warn('Initial state fetch failed', e);
-                    }
-
                     startPolling();
                 } catch (e) {
                     alert('Failed to quick match: ' + e.message);
@@ -528,7 +516,6 @@
                     waitingMsg.textContent = 'Waiting for players to join...';
                     lobbyScreen.style.display = 'flex';
                     startScreen.style.display = 'none';
-                    // set up controls according to the assigned player index (fixes wrong controls for host)
                     setupControls(PLAYER_DEFS[my_player_index].controls);
                     startPolling();
                 } catch (e) {
@@ -544,35 +531,14 @@
                     return;
                 }
                 try {
-                    // try the canonical endpoint first
-                    let res = await fetch(`${server_url}/join/${gid}`, {
+                    const res = await fetch(`${server_url}/join/${gid}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: '{}'
+                        headers: { 'Content-Type': 'application/json' }
                     });
-
-                    // fallback: some servers expose /join (POST with { game_id })
                     if (!res.ok) {
-                        const altPayload = JSON.stringify({ game_id: gid });
-                        try {
-                            const alt = await fetch(`${server_url}/join`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: altPayload
-                            });
-                            if (!alt.ok) {
-                                // try to extract error message
-                                const txt = await alt.text().catch(() => 'Failed to join');
-                                throw new Error(txt || 'Failed to join');
-                            }
-                            res = alt;
-                        } catch (altErr) {
-                            // rethrow original error or alt error
-                            const txt = await res.text().catch(() => null);
-                            throw new Error((txt && txt) || altErr.message || 'Failed to join');
-                        }
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.error || 'Invalid room code');
                     }
-
                     const data = await res.json();
                     game_id = gid;
                     my_player_index = data.player_index;
