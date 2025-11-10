@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>Get ’Em Multiplayer</title>
+        <title>Get ’Em - Multiplayer</title>
         <style>
             html, body {
                 margin: 0;
@@ -12,7 +12,9 @@
                 color: black;
             }
             canvas { display: none; }
-            #startScreen {
+            
+            /* Menu screens */
+            #menuScreen, #hostScreen, #joinScreen, #lobbyScreen, #startScreen {
                 position: absolute;
                 inset: 0;
                 display: flex;
@@ -23,23 +25,26 @@
                 background: skyblue;
                 text-align: center;
             }
-            #startScreen input { width: 4rem; padding: 0.4rem; text-align: center; }
-            #startScreen button { padding: 0.6rem 1.6rem; font-size: 1rem; cursor: pointer; }
-            #lobbyScreen {
-                position: absolute;
-                inset: 0;
+            #hostScreen, #joinScreen, #lobbyScreen, #startScreen {
                 display: none;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                gap: 1rem;
-                background: skyblue;
-                text-align: center;
             }
-            #lobbyScreen button { padding: 0.6rem 1.6rem; font-size: 1rem; cursor: pointer; }
-            #lobbyScreen input { width: 6rem; padding: 0.4rem; text-align: center; text-transform: uppercase; }
+            
+            input, button {
+                padding: 0.6rem 1.2rem;
+                font-size: 1rem;
+                margin: 0.5rem;
+            }
+            button { cursor: pointer; }
+            
             .hidden { display: none !important; }
-            .controls-info { font-size: 0.9rem; line-height: 1.4; max-width: 18rem; }
+            
+            .controls-info { 
+                font-size: 0.9rem; 
+                line-height: 1.4; 
+                max-width: 18rem; 
+                margin-top: 1rem;
+            }
+            
             #gameOver {
                 position: absolute;
                 inset: 0;
@@ -75,16 +80,42 @@
                 text-shadow: 0 8px 18px rgba(0,0,0,0.6);
             }
 
+            /* Lobby styles */
+            #playerList {
+                list-style: none;
+                padding: 0;
+                margin: 1rem 0;
+            }
+            #playerList li {
+                padding: 0.5rem;
+                margin: 0.25rem 0;
+                background: rgba(255,255,255,0.3);
+                border-radius: 4px;
+            }
+            #gameCodeDisplay {
+                font-size: 2rem;
+                font-weight: bold;
+                margin: 1rem 0;
+            }
+
             /* small responsive tweaks */
             @media (max-width: 600px) {
                 #bigCountdown .number { font-size: 140px; }
-                #startScreen h1 { font-size: 2rem; }
+                #menuScreen h1, #hostScreen h1, #joinScreen h1 { font-size: 2rem; }
             }
         </style>
     </head>
     <body>
-        <div id="startScreen">
-            <h1>Get ’Em Multiplayer</h1>
+        <!-- Menu Screen -->
+        <div id="menuScreen">
+            <h1>Get ’Em</h1>
+            <button id="hostButton">Host Game</button>
+            <button id="joinButton">Join Game</button>
+        </div>
+
+        <!-- Host Screen -->
+        <div id="hostScreen">
+            <h1>Host Game</h1>
             <label>
                 Players (2-4):
                 <input id="playerCount" type="number" min="2" max="4" value="2">
@@ -96,52 +127,82 @@
             <label style="display:flex;align-items:center;gap:8px;">
                 <input id="powerupsCheckbox" type="checkbox" checked> Powerups
             </label>
-            <button id="quickMatchButton">Quick Match</button>
-            <button id="createButton">Host Game</button>
-            <button id="joinButton">Join Game</button>
-            <label style="display:flex;align-items:center;gap:8px;">
-                Room Code: <input id="gameCode" type="text" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;">
+            <button id="createGameButton">Create Game</button>
+            <button id="backFromHostButton">Back</button>
+        </div>
+
+        <!-- Join Screen -->
+        <div id="joinScreen">
+            <h1>Join Game</h1>
+            <label>
+                Game Code:
+                <input id="gameCodeInput" type="text" maxlength="4" placeholder="1234">
             </label>
+            <button id="joinGameButton">Join</button>
+            <button id="backFromJoinButton">Back</button>
+            <div id="joinMessage"></div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobbyScreen">
+            <h1>Game Lobby</h1>
+            <div id="gameCodeDisplay"></div>
+            <div>Players: <span id="playerCountDisplay">0</span>/<span id="maxPlayersDisplay">0</span></div>
+            <ul id="playerList"></ul>
+            <button id="readyButton">Ready</button>
+            <button id="leaveLobbyButton">Leave</button>
             <div class="controls-info">
-                Controls: WAD (red), Arrow keys (blue)<br>
-                + IJL (green)<br>
-                + FTH (yellow)
+                2 players: WAD (red), Arrow keys (blue)<br>
+                3 players: + IJL (green)<br>
+                4 players: + FTH (yellow)
             </div>
         </div>
 
-        <div id="lobbyScreen">
-            <h2>Room: <span id="gameId"></span></h2>
-            <div>Players: <span id="joinedCount">1/2</span></div>
-            <button id="startGameButton" style="display:none;">Start Game</button>
-            <div id="waitingMsg">Share the room code with friends!</div>
+        <!-- Original Start Screen (hidden in multiplayer) -->
+        <div id="startScreen" class="hidden">
+            <!-- Content remains the same but won't be used in multiplayer -->
         </div>
 
-        <div id="gameOver" style="display:none;">
+        <div id="gameOver" class="hidden">
             <div id="gameOverText">Red Lost!</div>
-            <button id="restartButton">Restart</button>
-            <button id="menuButton">Menu</button>
+            <button id="restartButton">Return to Menu</button>
         </div>
 
         <!-- big countdown overlay -->
-        <div id="bigCountdown" style="display:none;"><div class="number" id="bigCountdownNumber">3</div></div>
+        <div id="bigCountdown" class="hidden"><div class="number" id="bigCountdownNumber">3</div></div>
 
         <canvas id="gameCanvas"></canvas>
 
         <script>
-            const server_url = 'https://getemmultiplayer.pythonanywhere.com';
-            let game_id, my_player_index, is_host, max_players, time_offset = 0;
-            let poll_interval;
-            let my_controls, inputState = { left: false, right: false, jumpPressed: false };
+            // Server configuration
+            const SERVER_URL = "https://getemmultiplayer.pythonanywhere.com";
+            
+            // Generate a unique player ID
+            const PLAYER_ID = 'player_' + Math.random().toString(36).substr(2, 9);
+            
+            // Game state
+            let currentGameCode = null;
+            let playerIndex = 0;
+            let pollInterval = null;
 
             // ---------- Player class ----------
             class Player {
-                constructor({ color }) {
+                constructor({ color, controls, startX }) {
                     this.color = color;
+                    this.controls = controls;
+                    this.baseSpeed = 3;
+                    this.baseJumpHeight = 12;
+                    this.speed = this.baseSpeed;
                     this.width = 20;
                     this.height = 20;
-                    this.canvasX = 0;
+                    this.canvasX = startX;
                     this.canvasY = 300;
+                    this.vy = 0;
+                    this.gravity = 0.5;
+                    this.jumpHeight = this.baseJumpHeight;
+                    this.grounded = false;
                     this.isIt = false;
+                    // effect timers (use performance.now timestamps)
                     this.effects = {
                         speedUntil: 0,
                         jumpUntil: 0,
@@ -150,33 +211,69 @@
                         godUntil: 0
                     };
                 }
-                isInvulnerable(serverNow) {
-                    return this.effects.invulnerableUntil > serverNow || this.effects.godUntil > serverNow;
+                isInvulnerable(now) { return this.effects.invulnerableUntil > now || this.effects.godUntil > now; }
+                isReversed(now) { return this.effects.reverseUntil > now; }
+                updateBaseFromEffects(now) {
+                    // numeric effects: speed & jump should map to expiry timestamps
+                    if (this.effects.godUntil > now) {
+                        // god overrides speed/jump
+                        this.speed = 10;
+                        this.jumpHeight = 17;
+                    } else {
+                        // god expired: clear god
+                        if (this.effects.speedUntil > now) {
+                            this.speed = 6;
+                        } else {
+                            this.speed = this.baseSpeed;
+                        }
+                        if (this.effects.jumpUntil > now) {
+                            this.jumpHeight = 15;
+                        } else {
+                            this.jumpHeight = this.baseJumpHeight;
+                        }
+                    }
                 }
             }
 
             // ---------- Canvas + DOM ----------
             const canvas = document.getElementById("gameCanvas");
             const ctx = canvas.getContext("2d");
-            const startScreen = document.getElementById("startScreen");
-            const quickMatchButton = document.getElementById("quickMatchButton");
-            const createButton = document.getElementById("createButton");
-            const joinButton = document.getElementById("joinButton");
-            const gameCodeInput = document.getElementById("gameCode");
-            const playerCountInput = document.getElementById("playerCount");
-            const timeLimitInput = document.getElementById("timeLimit");
-            const powerupsCheckbox = document.getElementById("powerupsCheckbox");
+            
+            // Menu elements
+            const menuScreen = document.getElementById("menuScreen");
+            const hostScreen = document.getElementById("hostScreen");
+            const joinScreen = document.getElementById("joinScreen");
             const lobbyScreen = document.getElementById("lobbyScreen");
-            const gameIdEl = document.getElementById("gameId");
-            const joinedCountEl = document.getElementById("joinedCount");
-            const startGameButton = document.getElementById("startGameButton");
-            const waitingMsg = document.getElementById("waitingMsg");
+            const startScreen = document.getElementById("startScreen");
+            
+            const hostButton = document.getElementById("hostButton");
+            const joinButton = document.getElementById("joinButton");
+            const createGameButton = document.getElementById("createGameButton");
+            const backFromHostButton = document.getElementById("backFromHostButton");
+            const joinGameButton = document.getElementById("joinGameButton");
+            const backFromJoinButton = document.getElementById("backFromJoinButton");
+            const gameCodeInput = document.getElementById("gameCodeInput");
+            const joinMessage = document.getElementById("joinMessage");
+            
+            // Lobby elements
+            const gameCodeDisplay = document.getElementById("gameCodeDisplay");
+            const playerCountDisplay = document.getElementById("playerCountDisplay");
+            const maxPlayersDisplay = document.getElementById("maxPlayersDisplay");
+            const playerList = document.getElementById("playerList");
+            const readyButton = document.getElementById("readyButton");
+            const leaveLobbyButton = document.getElementById("leaveLobbyButton");
+            
+            // Game elements
             const gameOverEl = document.getElementById("gameOver");
             const gameOverText = document.getElementById("gameOverText");
             const restartButton = document.getElementById("restartButton");
-            const menuButton = document.getElementById("menuButton");
             const bigCountdown = document.getElementById("bigCountdown");
             const bigCountdownNumber = document.getElementById("bigCountdownNumber");
+            
+            // Game settings inputs
+            const playerCountInput = document.getElementById("playerCount");
+            const timeLimitInput = document.getElementById("timeLimit");
+            const powerupsCheckbox = document.getElementById("powerupsCheckbox");
 
             // ---------- constants ----------
             const PLAYER_DEFS = [
@@ -185,6 +282,8 @@
                 { color: "green", controls: { left: "j", right: "l", jump: "i" } },
                 { color: "yellow", controls: { left: "f", right: "h", jump: "t" } }
             ];
+            const START_POSITIONS = { 2: [-60, 60], 3: [-90, 0, 90], 4: [-120, -40, 40, 120] };
+            const TAG_COOLDOWN_MS = 500;
 
             // ---------- game state ----------
             const game = {
@@ -206,11 +305,15 @@
                     { x: -300, y: 50, width: 120, height: 20 },
                 ],
                 running: false,
-                remaining_sec: 0,
+                lastTagTime: 0,
+                endTime: 0,
+                timeLimitSeconds: 60,
                 // powerups
                 powerups: [], // active powerup pickups on world
                 clones: [], // temporary dummy clones
-                max_players: 2
+                spawnIntervalId: null,
+                godUsed: false,
+                lastSpawnAt: 0
             };
 
             // ---------- powerup visuals as SVG data URLs (icons provided) ----------
@@ -234,11 +337,150 @@
                 ICON_IMGS[k] = img;
             }
 
+            // ---------- powerup types ----------
+            const POWERUP_TYPES = ["speed","shield","clone","reverse","jump","god","teleport"];
+
+            // ---------- input tracking ----------
+            const movement = {
+                keysHeld: { a:false,d:false,w:false, ArrowLeft:false,ArrowRight:false,ArrowUp:false, j:false,l:false,i:false, f:false,h:false,t:false },
+                keydown(e) {
+                    if (movement.keysHeld.hasOwnProperty(e.key)) {
+                        if (!movement.keysHeld[e.key]) {
+                            // handle jump built on per-player check below
+                            for (const player of game.players) {
+                                const jumpKey = player.controls.jump;
+                                if (jumpKey === e.key && player.grounded) {
+                                    player.vy = -player.jumpHeight;
+                                    player.grounded = false;
+                                }
+                            }
+                        }
+                        movement.keysHeld[e.key] = true;
+                        e.preventDefault();
+                    }
+                },
+                keyup(e) {
+                    if (movement.keysHeld.hasOwnProperty(e.key)) {
+                        movement.keysHeld[e.key] = false;
+                        e.preventDefault();
+                    }
+                },
+                isPressedKeyFor(player, controlType) {
+                    // controlType: "left"|"right"|"jump"
+                    const now = performance.now();
+                    const reversed = player.isReversed(now);
+                    if (controlType === "left") {
+                        const desired = reversed ? player.controls.right : player.controls.left;
+                        return !!movement.keysHeld[desired];
+                    } else if (controlType === "right") {
+                        const desired = reversed ? player.controls.left : player.controls.right;
+                        return !!movement.keysHeld[desired];
+                    } else if (controlType === "jump") {
+                        return !!movement.keysHeld[player.controls.jump];
+                    }
+                    return false;
+                }
+            };
+
+            // ---------- helpers for player/platform bounds ----------
+            function getPlayerBounds(player) {
+                return {
+                    left: player.canvasX - player.width/2,
+                    right: player.canvasX + player.width/2,
+                    top: player.canvasY - player.height/2,
+                    bottom: player.canvasY + player.height/2
+                };
+            }
+
             // ---------- resize ----------
             function resizeCanvas() {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
+                for (const player of game.players) {
+                    const maxY = canvas.height/2 - player.height/2;
+                    const minY = -canvas.height/2 + player.height/2;
+                    if (player.canvasY > maxY) { player.canvasY = maxY; player.vy = 0; player.grounded = true; }
+                    if (player.canvasY < minY) { player.canvasY = minY; player.vy = 0; }
+                    const minX = -canvas.width/2 + player.width/2;
+                    const maxX = canvas.width/2 - player.width/2;
+                    if (player.canvasX < minX) player.canvasX = minX;
+                    if (player.canvasX > maxX) player.canvasX = maxX;
+                }
                 game.draw();
+            }
+
+            // ---------- create players ----------
+            function createPlayers(count) {
+                const offsets = START_POSITIONS[count];
+                return PLAYER_DEFS.slice(0,count).map((def, idx) => new Player({ ...def, startX: offsets[idx] }));
+            }
+
+            // ---------- physics & movement ----------
+            function applyPhysics(player) {
+                // update effects (speed/jump/invuln) according to timers
+                player.updateBaseFromEffects(performance.now());
+
+                let dx = 0;
+                if (movement.isPressedKeyFor(player,"left")) dx -= player.speed;
+                if (movement.isPressedKeyFor(player,"right")) dx += player.speed;
+
+                const prevX = player.canvasX;
+                const prevLeft = prevX - player.width/2;
+                const prevRight = prevX + player.width/2;
+
+                player.canvasX += dx;
+                let bounds = getPlayerBounds(player);
+
+                if (dx !== 0) {
+                    for (const obj of game.objects) {
+                        if (bounds.bottom > obj.y && bounds.top < obj.y + obj.height) {
+                            if (dx > 0 && bounds.right > obj.x && prevRight <= obj.x) {
+                                player.canvasX = obj.x - player.width/2;
+                                bounds = getPlayerBounds(player);
+                            } else if (dx < 0 && bounds.left < obj.x + obj.width && prevLeft >= obj.x + obj.width) {
+                                player.canvasX = obj.x + obj.width + player.width/2;
+                                bounds = getPlayerBounds(player);
+                            }
+                        }
+                    }
+                }
+
+                const minX = -canvas.width/2 + player.width/2;
+                const maxX = canvas.width/2 - player.width/2;
+                if (player.canvasX < minX) { player.canvasX = minX; bounds = getPlayerBounds(player); }
+                else if (player.canvasX > maxX) { player.canvasX = maxX; bounds = getPlayerBounds(player); }
+
+                const prevY = player.canvasY;
+                const prevTop = prevY - player.height/2;
+                const prevBottom = prevY + player.height/2;
+
+                player.vy += player.gravity;
+                const dy = player.vy;
+                player.canvasY += player.vy;
+                bounds = getPlayerBounds(player);
+                player.grounded = false;
+
+                if (dy !== 0) {
+                    for (const obj of game.objects) {
+                        if (bounds.right > obj.x && bounds.left < obj.x + obj.width) {
+                            if (dy > 0 && bounds.bottom > obj.y && prevBottom <= obj.y) {
+                                player.canvasY = obj.y - player.height/2;
+                                player.vy = 0;
+                                player.grounded = true;
+                                bounds = getPlayerBounds(player);
+                            } else if (dy < 0 && bounds.top < obj.y + obj.height && prevTop >= obj.y + obj.height) {
+                                player.canvasY = obj.y + obj.height + player.height/2;
+                                player.vy = 0;
+                                bounds = getPlayerBounds(player);
+                            }
+                        }
+                    }
+                }
+
+                const maxY = canvas.height/2 - player.height/2;
+                const minY = -canvas.height/2 + player.height/2;
+                if (player.canvasY > maxY) { player.canvasY = maxY; player.vy = 0; player.grounded = true; }
+                else if (player.canvasY < minY) { player.canvasY = minY; player.vy = 0; }
             }
 
             // ---------- draw ----------
@@ -300,7 +542,6 @@
                 }
 
                 // draw players
-                const est_server_now = performance.now() + time_offset;
                 for (const player of game.players) {
                     const drawX = canvas.width/2 + player.canvasX - player.width/2;
                     const drawY = canvas.height/2 + player.canvasY - player.height/2;
@@ -308,7 +549,8 @@
                     ctx.fillRect(drawX, drawY, player.width, player.height);
 
                     // shield / ring if invulnerable
-                    if (player.isInvulnerable(est_server_now)) {
+                    const now = performance.now();
+                    if (player.isInvulnerable(now)) {
                         ctx.beginPath();
                         ctx.lineWidth = 4;
                         ctx.strokeStyle = "white";
@@ -328,8 +570,10 @@
                 }
 
                 // draw countdown top-right (round timer)
-                if (game.remaining_sec > 0) {
-                    const sec = game.remaining_sec;
+                if (game.endTime > 0) {
+                    const now = performance.now();
+                    const remainingMs = Math.max(0, game.endTime - now);
+                    const sec = Math.ceil(remainingMs/1000);
                     ctx.font = "28px Arial";
                     ctx.textAlign = "right";
                     ctx.textBaseline = "top";
@@ -347,272 +591,570 @@
                 }
             };
 
-            // ---------- update from state ----------
-            function updateFromState(state) {
-                game.players = state.players.map(p => {
-                    const player = new Player({ color: p.color });
-                    player.canvasX = p.x;
-                    player.canvasY = p.y;
-                    player.isIt = p.is_it;
-                    player.effects = p.effects;
-                    return player;
-                });
-                game.powerups = state.powerups;
-                game.clones = state.clones;
-                game.running = state.running;
-                game.remaining_sec = state.remaining_sec;
-                game.max_players = state.max_players;
+            // ---------- tagging checks ----------
+            function checkTagging() {
+                const now = performance.now();
+                if (now - game.lastTagTime < TAG_COOLDOWN_MS) return;
+                let itIndex = -1;
+                for (let i=0;i<game.players.length;i++) if (game.players[i].isIt) { itIndex = i; break; }
+                if (itIndex === -1) return;
+                const itPlayer = game.players[itIndex];
+                const itBounds = getPlayerBounds(itPlayer);
 
-                const cd_rem = state.countdown_remaining_sec;
-                if (cd_rem > 0) {
-                    bigCountdownNumber.textContent = Math.ceil(cd_rem).toString();
-                    bigCountdown.style.display = 'flex';
-                } else {
-                    bigCountdown.style.display = 'none';
-                }
-
-                // FIX: Properly handle lobby state - only show lobby when game is not running AND no countdown AND not game over
-                const is_lobby = !state.running && cd_rem === 0 && state.game_over_loser === null;
-                if (is_lobby) {
-                    joinedCountEl.textContent = `${state.players.length}/${state.max_players}`;
-                    startGameButton.style.display = (state.host_index === my_player_index && state.players.length >= 2) ? 'block' : 'none';
-                    waitingMsg.textContent = state.host_index === my_player_index ? 'Share the room code with friends!' : 'Waiting for host to start...';
-                    canvas.style.display = 'none';
-                    lobbyScreen.style.display = 'flex';
-                } else {
-                    lobbyScreen.style.display = 'none';
-                    canvas.style.display = 'block';
-                    resizeCanvas();
-                }
-
-                if (state.game_over_loser) {
-                    const loserName = state.game_over_loser.charAt(0).toUpperCase() + state.game_over_loser.slice(1);
-                    gameOverText.textContent = loserName + " Lost!";
-                    gameOverEl.style.display = 'flex';
-                } else {
-                    gameOverEl.style.display = 'none';
-                }
-            }
-
-            // ---------- polling ----------
-            function startPolling() {
-                poll_interval = setInterval(async () => {
-                    try {
-                        const inp = getCurrentInput();
-                        await fetch(`${server_url}/input/${game_id}/${my_player_index}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(inp)
-                        });
-
-                        const res = await fetch(`${server_url}/state/${game_id}/${my_player_index}`);
-                        if (!res.ok) throw new Error('Failed to fetch state');
-                        const state = await res.json();
-                        time_offset = state.server_time - performance.now();
-                        updateFromState(state);
-                    } catch (e) {
-                        console.error('Polling error:', e);
+                for (let j=0;j<game.players.length;j++) {
+                    if (j === itIndex) continue;
+                    const other = game.players[j];
+                    // skip if target is invulnerable
+                    if (other.isInvulnerable(now)) continue;
+                    // simple AABB
+                    const oBounds = getPlayerBounds(other);
+                    const intersect = !(itBounds.right < oBounds.left ||
+                                        itBounds.left > oBounds.right ||
+                                        itBounds.bottom < oBounds.top ||
+                                        itBounds.top > oBounds.bottom);
+                    if (intersect) {
+                        // transfer
+                        itPlayer.isIt = false;
+                        other.isIt = true;
+                        game.lastTagTime = now;
+                        break;
                     }
-                }, 100);
+                }
             }
 
-            function getCurrentInput() {
-                const inp = {
-                    left: inputState.left,
-                    right: inputState.right,
-                    jump: inputState.jumpPressed
+            // ---------- powerup spawning ----------
+            function spawnPowerup() {
+                // must spawn only while running, and only if powerups enabled checkbox checked
+                if (!game.running) return;
+                if (!powerupsCheckbox.checked) return;
+                // choose a random platform
+                if (game.objects.length === 0) return;
+                // try N times to pick a platform with enough width
+                let platform = null;
+                for (let tries=0; tries<10; tries++) {
+                    const idx = Math.floor(Math.random()*game.objects.length);
+                    const obj = game.objects[idx];
+                    if (obj.width >= 40) { platform = obj; break; }
+                }
+                if (!platform) platform = game.objects[Math.floor(Math.random()*game.objects.length)];
+                // choose x coordinate somewhere on platform (in world coords)
+                const px = platform.x + Math.random()*(platform.width - 20) + 10;
+                const py = platform.y - 12; // sit above platform (world coords centered)
+                // choose powerup type randomly, but ensure god appears at most once per game
+                let type = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+                if (type === "god" && game.godUsed) {
+                    // pick another
+                    const alternatives = POWERUP_TYPES.filter(t => t !== "god");
+                    type = alternatives[Math.floor(Math.random()*alternatives.length)];
+                }
+                // create powerup object
+                const pu = {
+                    type,
+                    x: px,
+                    y: py,
+                    radius: 18,
+                    spawnAt: performance.now()
                 };
-                inputState.jumpPressed = false;
-                return inp;
+                game.powerups.push(pu);
+                if (type === "god") game.godUsed = true;
+                game.lastSpawnAt = performance.now();
             }
 
-            function setupControls(controls) {
-                my_controls = controls;
-                // Clear previous listeners if any
-                window.removeEventListener('keydown', handleKeydown);
-                window.removeEventListener('keyup', handleKeyup);
-                window.addEventListener('keydown', handleKeydown);
-                window.addEventListener('keyup', handleKeyup);
-            }
-
-            function handleKeydown(e) {
-                if (e.key === my_controls.left) inputState.left = true;
-                if (e.key === my_controls.right) inputState.right = true;
-                if (e.key === my_controls.jump) inputState.jumpPressed = true;
-                e.preventDefault();
-            }
-
-            function handleKeyup(e) {
-                if (e.key === my_controls.left) inputState.left = false;
-                if (e.key === my_controls.right) inputState.right = false;
-                e.preventDefault();
-            }
-
-            // ---------- quick match ----------
-            async function quickMatch() {
-                const count = parseInt(playerCountInput.value, 10);
-                const seconds = parseInt(timeLimitInput.value, 10) || 60;
-                const pu = powerupsCheckbox.checked;
-                if (!Number.isInteger(count) || count < 2 || count > 4) {
-                    alert("Please enter a number between 2 and 4.");
-                    return;
-                }
-                if (!Number.isInteger(seconds) || seconds < 5) {
-                    alert("Please enter a time of at least 5 seconds.");
-                    return;
-                }
-                try {
-                    const res = await fetch(`${server_url}/quick_match`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ num_players: count, time_limit: seconds, powerups: pu })
-                    });
-                    if (!res.ok) {
-                        const errData = await res.json().catch(() => ({}));
-                        throw new Error(errData.error || 'Failed to quick match');
+            // ---------- pick up powerup ----------
+            function pickupPowerup(player, pu) {
+                const now = performance.now();
+                // apply according to type
+                if (pu.type === "speed") {
+                    player.effects.speedUntil = now + 7000;
+                    player.updateBaseFromEffects(now);
+                } else if (pu.type === "shield") {
+                    player.effects.invulnerableUntil = now + 7000;
+                } else if (pu.type === "clone") {
+                    // spawn a dummy clone at player's current pos that lasts 7s
+					const clone = {
+    					color: player.color,
+    					x: player.canvasX,           // centre X (world coords)
+    					y: player.canvasY,           // centre Y (world coords)
+    					width: player.width,
+    					height: player.height,
+    					vy: 0,                       // vertical velocity
+    					gravity: 0.5,                // gravity for clone
+    					grounded: false,
+    					expiresAt: now + 7000
+					};
+					game.clones.push(clone);
+                } else if (pu.type === "reverse") {
+                    // reverse ALL OTHER players for 7s
+                    for (const p of game.players) {
+                        if (p === player) continue;
+                        p.effects.reverseUntil = now + 7000;
                     }
-                    const data = await res.json();
-                    game_id = data.game_id;
-                    my_player_index = data.player_index;
-                    is_host = data.is_host;
-                    max_players = data.max_players;
-                    gameIdEl.textContent = game_id;
-                    waitingMsg.textContent = is_host ? 'You are the host. Wait for players.' : 'Matched! Waiting for host to start...';
-                    lobbyScreen.style.display = 'flex';
-                    startScreen.style.display = 'none';
-                    setupControls(PLAYER_DEFS[my_player_index].controls);
-                    startPolling();
-                } catch (e) {
-                    alert('Failed to quick match: ' + e.message);
-                }
-            }
-
-            // ---------- create game ----------
-            async function createGame() {
-                const count = parseInt(playerCountInput.value, 10);
-                const seconds = parseInt(timeLimitInput.value, 10) || 60;
-                const pu = powerupsCheckbox.checked;
-                if (!Number.isInteger(count) || count < 2 || count > 4) {
-                    alert("Please enter a number between 2 and 4.");
-                    return;
-                }
-                if (!Number.isInteger(seconds) || seconds < 5) {
-                    alert("Please enter a time of at least 5 seconds.");
-                    return;
-                }
-                try {
-                    const res = await fetch(`${server_url}/create`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ num_players: count, time_limit: seconds, powerups: pu })
-                    });
-                    if (!res.ok) throw new Error('Failed to create');
-                    const data = await res.json();
-                    game_id = data.game_id;
-                    my_player_index = data.player_index;
-                    is_host = data.is_host;
-                    max_players = data.max_players;
-                    gameIdEl.textContent = game_id;
-                    waitingMsg.textContent = 'Waiting for players to join...';
-                    lobbyScreen.style.display = 'flex';
-                    startScreen.style.display = 'none';
-                    setupControls(PLAYER_DEFS[my_player_index].controls);
-                    startPolling();
-                } catch (e) {
-                    alert('Failed to create game: ' + e.message);
-                }
-            }
-
-            // ---------- join game ----------
-            async function joinGame() {
-                const gid = gameCodeInput.value.trim().toUpperCase();
-                if (!gid || gid.length !== 6) {
-                    alert('Enter a valid 6-character room code.');
-                    return;
-                }
-                try {
-                    const res = await fetch(`${server_url}/join/${gid}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    if (!res.ok) {
-                        const errData = await res.json().catch(() => ({}));
-                        throw new Error(errData.error || 'Invalid room code');
+                } else if (pu.type === "jump") {
+                    player.effects.jumpUntil = now + 7000;
+                    player.updateBaseFromEffects(now);
+                } else if (pu.type === "god") {
+                    // special 5s
+                    player.effects.godUntil = now + 5000;
+                    // god also gives invulnerability implicitly via isInvulnerable check
+                    player.updateBaseFromEffects(now);
+                } else if (pu.type === "teleport") {
+                    // TELEPORT: move player to a random location ON A PLATFORM (must land on platform)
+                    if (game.objects.length > 0) {
+                        // try to pick a platform that fits player's width
+                        let platform = null;
+                        for (let tries=0; tries<20; tries++) {
+                            const idx = Math.floor(Math.random()*game.objects.length);
+                            const obj = game.objects[idx];
+                            if (obj.width >= player.width + 8) { platform = obj; break; }
+                        }
+                        if (!platform) platform = game.objects[Math.floor(Math.random()*game.objects.length)];
+                        // compute a center X that keeps player fully on platform
+                        const leftLimit = platform.x + player.width/2;
+                        const rightLimit = platform.x + platform.width - player.width/2;
+                        const px = leftLimit + Math.random() * Math.max(0, rightLimit - leftLimit);
+                        const py = platform.y - player.height/2; // center Y on top of platform
+                        player.canvasX = px;
+                        player.canvasY = py;
+                        player.vy = 0;
+                        player.grounded = true;
                     }
-                    const data = await res.json();
-                    game_id = gid;
-                    my_player_index = data.player_index;
-                    is_host = data.is_host;
-                    max_players = data.max_players;
-                    gameIdEl.textContent = gid;
-                    waitingMsg.textContent = is_host ? 'You are the host. Wait for players.' : 'Waiting for host to start...';
-                    lobbyScreen.style.display = 'flex';
-                    startScreen.style.display = 'none';
-                    setupControls(PLAYER_DEFS[my_player_index].controls);
-                    startPolling();
-                } catch (e) {
-                    alert('Failed to join: ' + e.message);
                 }
             }
 
-            // ---------- start game ----------
-            startGameButton.addEventListener('click', async () => {
-                try {
-                    const res = await fetch(`${server_url}/start/${game_id}/${my_player_index}`, { method: 'POST' });
-                    if (!res.ok) throw new Error('Failed to start');
-                    startGameButton.style.display = 'none';
-                    waitingMsg.textContent = 'Starting in 3...';
-                } catch (e) {
-                    alert('Failed to start game: ' + e.message);
-                }
-            });
-
-            // ---------- restart ----------
-            restartButton.addEventListener('click', async () => {
-                try {
-                    const res = await fetch(`${server_url}/restart/${game_id}/${my_player_index}`, { method: 'POST' });
-                    if (res.ok) {
-                        gameOverEl.style.display = 'none';
+            // ---------- check powerup collisions ----------
+            function checkPowerupPickups() {
+                const now = performance.now();
+                for (let i = game.powerups.length - 1; i >= 0; i--) {
+                    const pu = game.powerups[i];
+                    for (const player of game.players) {
+                        const drawPX = player.canvasX;
+                        const drawPY = player.canvasY;
+                        const dx = drawPX - pu.x;
+                        const dy = drawPY - pu.y;
+                        const distSq = dx*dx + dy*dy;
+                        const thresh = (Math.max(player.width, player.height)/2 + pu.radius);
+                        if (distSq <= thresh*thresh) {
+                            // pickup
+                            pickupPowerup(player, pu);
+                            // remove powerup from world
+                            game.powerups.splice(i,1);
+                            break;
+                        }
                     }
-                } catch (e) {
-                    console.error('Restart failed:', e);
                 }
-            });
-
-            // ---------- menu ----------
-            menuButton.addEventListener('click', resetToStart);
-
-            function resetToStart() {
-                if (poll_interval) {
-                    clearInterval(poll_interval);
-                    poll_interval = null;
-                }
-                game.players = [];
-                game.powerups = [];
-                game.clones = [];
-                gameOverEl.style.display = 'none';
-                bigCountdown.style.display = 'none';
-                lobbyScreen.style.display = 'none';
-                canvas.style.display = 'none';
-                startScreen.style.display = 'flex';
-                gameCodeInput.value = '';
-                inputState = { left: false, right: false, jumpPressed: false };
-                my_controls = null;
-                window.removeEventListener('keydown', handleKeydown);
-                window.removeEventListener('keyup', handleKeyup);
             }
 
-            // ---------- events ----------
-            quickMatchButton.addEventListener("click", quickMatch);
-            createButton.addEventListener("click", createGame);
-            joinButton.addEventListener("click", joinGame);
-            window.addEventListener("resize", resizeCanvas);
+            // ---------- update effects cleanup ----------
+            function cleanupEffectsAndClones() {
+                const now = performance.now();
+                // remove expired clones and update physics for active clones
+                for (let i = game.clones.length - 1; i >= 0; i--) {
+                    const c = game.clones[i];
+                    if (c.expiresAt <= now) {
+                        game.clones.splice(i, 1);
+                        continue;
+                    }
 
-            resizeCanvas();
+                    // simple vertical physics (no horizontal movement)
+                    const prevY = c.y;
+                    const prevTop = prevY - c.height/2;
+                    const prevBottom = prevY + c.height/2;
+
+                    c.vy += (c.gravity || 0.5);
+                    c.y += c.vy;
+
+                    // collision with platforms (AABB X-overlap + falling check)
+                    for (const obj of game.objects) {
+                        const cLeft = c.x - c.width/2;
+                        const cRight = c.x + c.width/2;
+                        // only check platforms that overlap in X
+                        if (cRight > obj.x && cLeft < obj.x + obj.width) {
+                            const newBottom = c.y + c.height/2;
+                            // landed on top of a platform
+                            if (newBottom > obj.y && prevBottom <= obj.y) {
+                                c.y = obj.y - c.height/2; // sit on top
+                                c.vy = 0;
+                                c.grounded = true;
+                            }
+                        }
+                    }
+
+                    // world vertical bounds (same logic as players)
+                    const maxY = canvas.height/2 - c.height/2;
+                    const minY = -canvas.height/2 + c.height/2;
+                    if (c.y > maxY) { c.y = maxY; c.vy = 0; c.grounded = true; }
+                    else if (c.y < minY) { c.y = minY; c.vy = 0; }
+                }
+
+                // players effects still handled elsewhere (player.updateBaseFromEffects in physics)
+            }
+
+            // ---------- game tick ----------
             game.tick = function tick() {
                 requestAnimationFrame(game.tick);
+                if (!game.running) return;
+                // update movement & physics
+                for (const player of game.players) applyPhysics(player);
+                cleanupEffectsAndClones();
+                checkTagging();
+                checkPowerupPickups();
+                // timer end
+                const now = performance.now();
+                if (game.endTime > 0) {
+                    const remaining = Math.max(0, game.endTime - now);
+                    if (remaining <= 0) {
+                        endGame();
+                        return;
+                    }
+                }
                 game.draw();
             };
+
+            // ---------- start / end / reset ----------
+            function beginGameAfterCountdown(seconds) {
+                // actually start running and start timers/spawn intervals
+                game.timeLimitSeconds = seconds;
+                game.endTime = performance.now() + seconds*1000;
+                game.running = true;
+                // powerup spawns: spawn after 1s then every 10s
+                if (powerupsCheckbox.checked) {
+                    setTimeout(() => { if (game.running && powerupsCheckbox.checked) spawnPowerup(); }, 1000);
+                    game.spawnIntervalId = setInterval(() => {
+                        if (game.running && powerupsCheckbox.checked) spawnPowerup();
+                    }, 10000);
+                }
+                // ensure movement keys cleared
+                for (const key in movement.keysHeld) movement.keysHeld[key] = false;
+                // start loop already running; game.tick will process
+            }
+
+            function endGame() {
+                game.running = false;
+                game.endTime = 0;
+                // clear spawn interval
+                if (game.spawnIntervalId) { clearInterval(game.spawnIntervalId); game.spawnIntervalId = null; }
+                let loser = null;
+                for (const p of game.players) if (p.isIt) { loser = p; break; }
+                const loserName = loser ? (loser.color.charAt(0).toUpperCase() + loser.color.slice(1)) : "No one";
+                gameOverText.textContent = loserName + " Lost!";
+                gameOverEl.classList.remove("hidden");
+            }
+
+            function resetToMenu() {
+                game.running = false;
+                if (game.spawnIntervalId) { clearInterval(game.spawnIntervalId); game.spawnIntervalId = null; }
+                game.players = [];
+                game.endTime = 0;
+                game.powerups = [];
+                game.clones = [];
+                game.godUsed = false;
+                gameOverEl.classList.add("hidden");
+                canvas.classList.add("hidden");
+                
+                // Stop polling and leave game
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                }
+                
+                if (currentGameCode) {
+                    fetch(`${SERVER_URL}/leave`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ player_id: PLAYER_ID })
+                    }).catch(console.error);
+                    currentGameCode = null;
+                }
+                
+                showScreen(menuScreen);
+            }
+
+            // ---------- multiplayer functions ----------
+            function showScreen(screen) {
+                // Hide all screens
+                menuScreen.style.display = 'none';
+                hostScreen.style.display = 'none';
+                joinScreen.style.display = 'none';
+                lobbyScreen.style.display = 'none';
+                startScreen.style.display = 'none';
+                canvas.style.display = 'none';
+                
+                // Show the requested screen
+                screen.style.display = 'flex';
+            }
+
+            async function hostGame() {
+                const playerCount = parseInt(playerCountInput.value, 10);
+                const timeLimit = parseInt(timeLimitInput.value, 10);
+                const powerupsEnabled = powerupsCheckbox.checked;
+                
+                try {
+                    const response = await fetch(`${SERVER_URL}/host`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            player_id: PLAYER_ID,
+                            player_count: playerCount,
+                            time_limit: timeLimit,
+                            powerups_enabled: powerupsEnabled
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    currentGameCode = data.code;
+                    
+                    // Update lobby display
+                    gameCodeDisplay.textContent = `Game Code: ${currentGameCode}`;
+                    maxPlayersDisplay.textContent = playerCount;
+                    
+                    showScreen(lobbyScreen);
+                    startPolling();
+                    
+                } catch (error) {
+                    console.error('Error hosting game:', error);
+                    alert('Failed to host game. Please try again.');
+                }
+            }
+
+            async function joinGame() {
+                const code = gameCodeInput.value.trim();
+                
+                if (code.length !== 4 || !/^\d+$/.test(code)) {
+                    joinMessage.textContent = "Please enter a valid 4-digit code";
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`${SERVER_URL}/join`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            code: code,
+                            player_id: PLAYER_ID
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        currentGameCode = code;
+                        showScreen(lobbyScreen);
+                        startPolling();
+                    } else {
+                        joinMessage.textContent = data.message;
+                    }
+                    
+                } catch (error) {
+                    console.error('Error joining game:', error);
+                    joinMessage.textContent = "Failed to join game. Please try again.";
+                }
+            }
+
+            async function setReady() {
+                try {
+                    await fetch(`${SERVER_URL}/ready`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ player_id: PLAYER_ID })
+                    });
+                    readyButton.disabled = true;
+                    readyButton.textContent = "Waiting...";
+                } catch (error) {
+                    console.error('Error setting ready:', error);
+                }
+            }
+
+            function startPolling() {
+                if (pollInterval) clearInterval(pollInterval);
+                
+                pollInterval = setInterval(async () => {
+                    if (!currentGameCode) return;
+                    
+                    try {
+                        const response = await fetch(`${SERVER_URL}/game_state/${currentGameCode}`);
+                        const gameState = await response.json();
+                        
+                        if (gameState.error) {
+                            console.error('Game error:', gameState.error);
+                            resetToMenu();
+                            return;
+                        }
+                        
+                        // Update lobby display
+                        playerCountDisplay.textContent = gameState.players;
+                        maxPlayersDisplay.textContent = gameState.max_players;
+                        
+                        // Update player list
+                        playerList.innerHTML = '';
+                        for (const [playerId, state] of Object.entries(gameState.player_states)) {
+                            const li = document.createElement('li');
+                            const playerNum = state.player_index + 1;
+                            const status = state.ready ? '✓ Ready' : 'Waiting...';
+                            li.textContent = `Player ${playerNum} (${playerId === PLAYER_ID ? 'You' : 'Opponent'}): ${status}`;
+                            playerList.appendChild(li);
+                        }
+                        
+                        // Handle game state transitions
+                        if (gameState.game_state === 'counting_down') {
+                            // Show countdown in lobby
+                            readyButton.textContent = `Starting in ${gameState.countdown}...`;
+                            
+                            if (gameState.countdown === 0) {
+                                // Game is starting
+                                startMultiplayerGame(gameState);
+                            }
+                        } else if (gameState.game_state === 'running') {
+                            // Game is running
+                            startMultiplayerGame(gameState);
+                        } else if (gameState.game_state === 'finished') {
+                            // Game finished
+                            endGame();
+                        }
+                        
+                        // Update game state on server
+                        if (gameState.game_state !== 'waiting') {
+                            await fetch(`${SERVER_URL}/update_game`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ game_code: currentGameCode })
+                            });
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error polling game state:', error);
+                    }
+                }, 1000); // Poll every second
+            }
+
+            function startMultiplayerGame(gameState) {
+                // Stop polling
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                }
+                
+                // Hide lobby, show game
+                lobbyScreen.style.display = 'none';
+                canvas.style.display = 'block';
+                
+                // Initialize players based on game state
+                const playerCount = gameState.players;
+                game.players = createPlayers(playerCount);
+                
+                // Set player index for this client
+                playerIndex = gameState.player_states[PLAYER_ID].player_index;
+                
+                // Randomly choose who is "it"
+                const initialIt = Math.floor(Math.random() * game.players.length);
+                for (let i = 0; i < game.players.length; i++) {
+                    game.players[i].isIt = (i === initialIt);
+                }
+                
+                game.lastTagTime = performance.now();
+                game.timeLimitSeconds = gameState.time_limit;
+                game.powerups = [];
+                game.clones = [];
+                game.godUsed = false;
+                
+                // Clear any previous spawn interval
+                if (game.spawnIntervalId) {
+                    clearInterval(game.spawnIntervalId);
+                    game.spawnIntervalId = null;
+                }
+                
+                // Clear movement keys
+                for (const key in movement.keysHeld) movement.keysHeld[key] = false;
+                
+                // Show countdown and start game
+                runBigCountdown(3, () => {
+                    beginGameAfterCountdown(gameState.time_limit);
+                });
+            }
+
+            // ---------- start button flow (with countdown) ----------
+            function startPressed() {
+                const count = parseInt(playerCountInput.value,10);
+                const seconds = parseInt(timeLimitInput.value,10) || 60;
+                if (!Number.isInteger(count) || count < 2 || count > 4) { alert("Please enter a number between 2 and 4."); return; }
+                if (!Number.isInteger(seconds) || seconds < 5) { alert("Please enter a time of at least 5 seconds."); return; }
+
+                // Prepare players and world state but DO NOT start physics/timers yet
+                game.players = createPlayers(count);
+                const initialIt = Math.floor(Math.random()*game.players.length);
+                for (let i=0;i<game.players.length;i++) game.players[i].isIt = (i===initialIt);
+                game.lastTagTime = performance.now();
+                game.timeLimitSeconds = seconds;
+                game.powerups = [];
+                game.clones = [];
+                game.godUsed = false;
+                // clear any previous spawn interval
+                if (game.spawnIntervalId) { clearInterval(game.spawnIntervalId); game.spawnIntervalId = null; }
+
+                for (const key in movement.keysHeld) movement.keysHeld[key] = false;
+                startScreen.classList.add("hidden");
+                gameOverEl.classList.add("hidden");
+                canvas.classList.remove("hidden");
+                canvas.style.display = "block";
+                resizeCanvas();
+                game.draw();
+
+                // show the big 3-2-1 overlay
+                runBigCountdown(3, () => {
+                    // after countdown completes, actually begin game
+                    beginGameAfterCountdown(seconds);
+                });
+            }
+
+            function runBigCountdown(startNumber, onComplete) {
+                let n = startNumber;
+                bigCountdownNumber.textContent = String(n);
+                bigCountdown.classList.remove("hidden");
+                // show initial number immediately
+                const intervalId = setInterval(() => {
+                    n--;
+                    if (n > 0) {
+                        bigCountdownNumber.textContent = String(n);
+                    } else {
+                        clearInterval(intervalId);
+                        bigCountdown.classList.add("hidden");
+                        // ensure canvas redraw before starting
+                        game.draw();
+                        if (typeof onComplete === "function") onComplete();
+                    }
+                }, 1000);
+            }
+
+            // ---------- event listeners ----------
+            // Menu events
+            hostButton.addEventListener("click", () => showScreen(hostScreen));
+            joinButton.addEventListener("click", () => showScreen(joinScreen));
+            
+            // Host events
+            createGameButton.addEventListener("click", hostGame);
+            backFromHostButton.addEventListener("click", () => showScreen(menuScreen));
+            
+            // Join events
+            joinGameButton.addEventListener("click", joinGame);
+            backFromJoinButton.addEventListener("click", () => showScreen(menuScreen));
+            
+            // Lobby events
+            readyButton.addEventListener("click", setReady);
+            leaveLobbyButton.addEventListener("click", resetToMenu);
+            
+            // Game events
+            restartButton.addEventListener("click", resetToMenu);
+            
+            // Original single-player events (kept for compatibility)
+            startButton.addEventListener("click", startPressed);
+            
+            // Other events
+            window.addEventListener("resize", resizeCanvas);
+            window.addEventListener("keydown", movement.keydown);
+            window.addEventListener("keyup", movement.keyup);
+
+            // Initialize
+            showScreen(menuScreen);
+            resizeCanvas();
             game.tick();
         </script>
     </body>
