@@ -160,7 +160,24 @@
 
         <!-- Original Start Screen (hidden in multiplayer) -->
         <div id="startScreen" class="hidden">
-            <!-- Content remains the same but won't be used in multiplayer -->
+            <h1>Get ’Em</h1>
+            <label>
+                Players (2-4):
+                <input id="playerCountSingle" type="number" min="2" max="4" value="2">
+            </label>
+            <label>
+                Seconds:
+                <input id="timeLimitSingle" type="number" min="5" max="300" value="60">
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input id="powerupsCheckboxSingle" type="checkbox" checked> Powerups
+            </label>
+            <button id="startButton">Start</button>
+            <div class="controls-info">
+                2 players: WAD (red), Arrow keys (blue)<br>
+                3 players: + IJL (green)<br>
+                4 players: + FTH (yellow)
+            </div>
         </div>
 
         <div id="gameOver" class="hidden">
@@ -175,7 +192,7 @@
 
         <script>
             // Server configuration
-            const SERVER_URL = "https://getemmultiplayer.pythonanywhere.com";
+            const SERVER_URL = "http://localhost:5000";
             
             // Generate a unique player ID
             const PLAYER_ID = 'player_' + Math.random().toString(36).substr(2, 9);
@@ -262,6 +279,12 @@
             const playerList = document.getElementById("playerList");
             const readyButton = document.getElementById("readyButton");
             const leaveLobbyButton = document.getElementById("leaveLobbyButton");
+            
+            // Single player elements
+            const startButton = document.getElementById("startButton");
+            const playerCountSingle = document.getElementById("playerCountSingle");
+            const timeLimitSingle = document.getElementById("timeLimitSingle");
+            const powerupsCheckboxSingle = document.getElementById("powerupsCheckboxSingle");
             
             // Game elements
             const gameOverEl = document.getElementById("gameOver");
@@ -489,12 +512,12 @@
                 ctx.fillStyle = "skyblue";
                 ctx.fillRect(0,0,canvas.width,canvas.height);
 
-                // title
+                // title - fixed positioning
                 ctx.fillStyle = "black";
                 ctx.font = "100px Arial";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "top";
-                ctx.fillText("Get ’Em", canvas.width/2, 20);
+                ctx.fillText("Get ’Em", canvas.width/2, 50); // Increased from 20 to 50
 
                 // draw platforms
                 ctx.fillStyle = "white";
@@ -507,10 +530,10 @@
                 // draw powerups
                 for (const pu of game.powerups) {
                     const drawX = canvas.width/2 + pu.x;
-                    const drawY = canvas.height/2 + pu.y - 5; // <-- move 5px higher
+                    const drawY = canvas.height/2 + pu.y - 5;
 
                     // smaller radius
-                    const radius = pu.radius * 0.7; // <-- 70% of original size
+                    const radius = pu.radius * 0.7;
 
                     // circle
                     ctx.beginPath();
@@ -521,7 +544,7 @@
                     // icon (centered)
                     const img = ICON_IMGS[pu.type];
                     if (img && img.complete) {
-                        const size = radius * 1.4; // match icon size to new radius
+                        const size = radius * 1.4;
                         ctx.drawImage(img, drawX - size/2, drawY - size/2, size, size);
                     }
 
@@ -1065,16 +1088,18 @@
                 // Clear movement keys
                 for (const key in movement.keysHeld) movement.keysHeld[key] = false;
                 
+                resizeCanvas();
+                
                 // Show countdown and start game
                 runBigCountdown(3, () => {
                     beginGameAfterCountdown(gameState.time_limit);
                 });
             }
 
-            // ---------- start button flow (with countdown) ----------
+            // ---------- single player functions ----------
             function startPressed() {
-                const count = parseInt(playerCountInput.value,10);
-                const seconds = parseInt(timeLimitInput.value,10) || 60;
+                const count = parseInt(playerCountSingle.value,10);
+                const seconds = parseInt(timeLimitSingle.value,10) || 60;
                 if (!Number.isInteger(count) || count < 2 || count > 4) { alert("Please enter a number between 2 and 4."); return; }
                 if (!Number.isInteger(seconds) || seconds < 5) { alert("Please enter a time of at least 5 seconds."); return; }
 
@@ -1144,7 +1169,7 @@
             // Game events
             restartButton.addEventListener("click", resetToMenu);
             
-            // Original single-player events (kept for compatibility)
+            // Single player events
             startButton.addEventListener("click", startPressed);
             
             // Other events
